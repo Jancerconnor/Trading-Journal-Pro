@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Trading Journal Pro - Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+:root {
+    --bg: #1e1e2f; --container: #2c2c3e; --text: #ffffff;
+    --panel: #38384f; --table: #4b4b65; --shadow: rgba(0,0,0,0.6);
+    --accent: #007BFF;
+}
+.light {
+    --bg: #f2f4f8; --container: #ffffff; --text: #1a1a1a;
+    --panel: #e8ebf3; --table: #dfe3ee; --shadow: rgba(0,0,0,0.1);
+    --accent: #007BFF;
+}
+body {font-family: Arial,sans-serif;margin:0;padding:0;background: var(--bg);color: var(--text);transition:0.3s;}
+#app {display:flex;height:100vh;}
+#sidebar {width:220px;background: var(--panel);display:flex;flex-direction:column;padding:20px 10px;box-shadow:2px 0 15px var(--shadow);}
+#sidebar h2{text-align:center;margin-bottom:20px;font-size:18px;}
+#sidebar button{background:transparent;border:none;color: var(--text);padding:12px 10px;text-align:left;font-size:15px;margin:4px 0;cursor:pointer;border-radius:6px;transition:0.3s;}
+#sidebar button.active,#sidebar button:hover{background: var(--accent);color:white;}
+#main {flex:1;padding:20px;overflow-y:auto;}
+.card {background: var(--container);padding:15px 20px;border-radius:12px;box-shadow:0 0 20px var(--shadow);margin-bottom:20px;transition:0.3s;}
+.card h2{margin-bottom:12px;}
+form{display:flex;flex-wrap:wrap;gap:10px;}
+form input, form select{padding:8px;border-radius:6px;border:none;font-size:14px;flex:1 1 150px;}
+button[type="submit"]{background:#28a745;color:white;border:none;border-radius:6px;cursor:pointer;padding:10px;transition:0.3s;}
+button[type="submit"]:hover{background:#1e7e34;}
+table{width:100%;border-collapse:collapse;margin-bottom:10px;}
+th, td{border:1px solid #555;padding:8px;text-align:center;font-size:14px;background: var(--table);transition:0.3s;}
+td.profit{color:#4caf50;font-weight:bold;}
+td.loss{color:#f44336;font-weight:bold;}
+td button{padding:4px 8px;font-size:12px;background:#dc3545;border-radius:4px;border:none;cursor:pointer;}
+td button:hover{background:#a71d2a;}
+#rulesModal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background: var(--container);padding:20px 25px;border-radius:12px;box-shadow:0 0 20px var(--shadow);z-index:100;display:none;}
+#rulesModal button{background: var(--accent);color:white;padding:10px;border:none;border-radius:6px;cursor:pointer;}
+#themeToggle{margin-top:10px;background:#ffcc00;color:black;border:none;padding:10px;border-radius:8px;cursor:pointer;font-weight:bold;transition:0.3s;}
+#themeToggle:hover{background:#e0b800;}
+</style>
+</head>
+<body>
+<div id="app">
+    <div id="sidebar">
+        <h2>Trading Journal Pro</h2>
+        <button class="active" data-tab="dashboardTab">Dashboard</button>
+        <button data-tab="historyTab">Historial</button>
+        <button data-tab="statsTab">Estadísticas</button>
+        <button data-tab="configTab">Configuración</button>
+        <button id="themeToggle">Modo Noche 🌙</button>
+    </div>
+    <div id="main">
+        <div class="tabContent" id="dashboardTab">
+            <div class="card">
+                <h2>Balance Inicial</h2>
+                <div style="display:flex;gap:10px;">
+                    <input type="number" id="initialBalance" placeholder="Balance inicial" step="0.01">
+                    <button id="setBalance">Guardar</button>
+                </div>
+            </div>
+            <div class="card">
+                <h2>Agregar / Editar operación</h2>
+                <form id="tradeForm">
+                    <select id="type" required>
+                        <option value="" disabled selected>Tipo</option>
+                        <option value="Compra">Compra</option>
+                        <option value="Venta">Venta</option>
+                    </select>
+                    <input type="text" id="pair" placeholder="Par (EURUSD)" required>
+                    <input type="number" id="lot" placeholder="Lote (0.70)" step="0.01" required>
+                    <input type="number" id="profit" placeholder="Ganancia" step="0.01">
+                    <input type="number" id="loss" placeholder="Pérdida" step="0.01">
+                    <input type="text" id="date" placeholder="Fecha (Ej: 06/12/2025 9:42 AM)" required>
+                    <input type="text" id="comment" placeholder="Comentario">
+                    <input type="hidden" id="editingIndex">
+                    <button type="submit">Guardar operación</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="tabContent" id="historyTab" style="display:none;">
+            <div class="card">
+                <h2>Historial de operaciones</h2>
+                <table>
+                    <thead><tr><th>Tipo</th><th>Par</th><th>Lote</th><th>Ganancia</th><th>Pérdida</th><th>Comentario</th><th>Fecha</th><th>Acciones</th></tr></thead>
+                    <tbody id="tradeHistory"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="tabContent" id="statsTab" style="display:none;">
+            <div class="card">
+                <h2>Resumen de Trading</h2>
+                <p>Total Operaciones: <span id="totalTrades">0</span></p>
+                <p>Balance Actual: $<span id="currentBalance">0.00</span></p>
+                <p>Ganancia Total: $<span id="totalProfit">0.00</span></p>
+                <p>Pérdida Total: $<span id="totalLoss">0.00</span></p>
+            </div>
+            <div class="card">
+                <h2>Gráfico de Ganancia / Pérdida</h2>
+                <canvas id="profitChart" height="150"></canvas>
+            </div>
+        </div>
+
+        <div class="tabContent" id="configTab" style="display:none;">
+            <div class="card">
+                <h2>Opciones</h2>
+                <button id="saveTrades">Guardar Todo</button>
+                <button id="exportTrades">Exportar JSON</button>
+                <button id="importTrades">Importar JSON</button>
+                <button id="showRules">Reglas</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="rulesModal">
+    <h2>Reglas del Trader</h2>
+    <ol>
+        <li>No operar noticias de alto impato</li>
+        <li>No más de 2 operaciones al día</li>
+        <li>No superar el lotaje maximo de tu Balance de la cuenta</li>
+    </ol>
+    <button id="closeRules">Cerrar</button>
+</div>
+
+<script>
+let initialBalance = parseFloat(localStorage.getItem("initialBalance"))||0;
+let trades = JSON.parse(localStorage.getItem("trades"))||[];
+const initialBalanceInput = document.getElementById("initialBalance");
+initialBalanceInput.value = initialBalance ? initialBalance.toFixed(2) : "";
+const tradeForm = document.getElementById("tradeForm");
+const editingIndexInput = document.getElementById("editingIndex");
+const tradeHistory = document.getElementById("tradeHistory");
+const currentBalanceEl = document.getElementById("currentBalance");
+const totalProfitEl = document.getElementById("totalProfit");
+const totalLossEl = document.getElementById("totalLoss");
+const totalTradesEl = document.getElementById("totalTrades");
+const setBalanceBtn = document.getElementById("setBalance");
+
+let chartInstance = null;
+
+function formatUSD(num){return(Number(num)||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});}
+function saveLocal(){localStorage.setItem("trades",JSON.stringify(trades)); localStorage.setItem("initialBalance",initialBalance);}
+
+function parseDate(str){
+    const parts = str.split(" ");
+    const dateParts = parts[0].split("/");
+    let day = parseInt(dateParts[0],10);
+    let month = parseInt(dateParts[1],10)-1;
+    let year = parseInt(dateParts[2],10);
+    let hour=0,min=0;
+    if(parts[1]){
+        let timeParts = parts[1].split(":");
+        hour=parseInt(timeParts[0],10);
+        min=parseInt(timeParts[1],10);
+        if(parts[2] && parts[2].toUpperCase()==="PM" && hour<12) hour+=12;
+        if(parts[2] && parts[2].toUpperCase()==="AM" && hour===12) hour=0;
+    }
+    return new Date(year, month, day, hour, min);
+}
+
+function calculateTotals(){
+    let balance = initialBalance;
+    let profitTotal = 0;
+    let lossTotal = 0;
+    trades.forEach(t=>{
+        const net = (parseFloat(t.profit)||0) - (parseFloat(t.loss)||0);
+        balance += net;
+    });
+    const netTotal = balance - initialBalance;
+    if(netTotal>=0){profitTotal = netTotal; lossTotal=0;}
+    else{profitTotal = 0; lossTotal = Math.abs(netTotal);}
+    currentBalanceEl.textContent = formatUSD(balance);
+    totalProfitEl.textContent = formatUSD(profitTotal);
+    totalLossEl.textContent = formatUSD(lossTotal);
+    totalTradesEl.textContent = trades.length;
+}
+
+function renderHistory(){
+    tradeHistory.innerHTML = "";
+    trades.forEach((t,i)=>{
+        const row=`<tr>
+        <td>${t.type}</td><td>${t.pair}</td><td>${formatUSD(t.lot)}</td>
+        <td class="profit">${formatUSD(t.profit)}</td>
+        <td class="loss">${formatUSD(t.loss)}</td>
+        <td>${t.comment}</td>
+        <td>${t.date}</td>
+        <td><button onclick="startEdit(${i})">Editar</button> <button onclick="deleteTrade(${i})">Eliminar</button></td>
+        </tr>`;
+        tradeHistory.innerHTML += row;
+    });
+}
+
+function renderChart(){
+    const ctx=document.getElementById("profitChart").getContext("2d");
+    if(chartInstance) chartInstance.destroy();
+    const labels = trades.map(t=>t.date);
+    let balance = initialBalance;
+    const data = trades.map(t=>{
+        balance += (parseFloat(t.profit)||0) - (parseFloat(t.loss)||0);
+        return balance;
+    });
+    chartInstance = new Chart(ctx,{
+        type:'line',
+        data:{labels,datasets:[{label:'Balance',data,borderColor:'#4caf50',backgroundColor:'rgba(76,175,80,0.2)',tension:0.3,fill:true,pointRadius:4}]},
+        options:{responsive:true,plugins:{legend:{display:false}}}
+    });
+}
+
+function renderAll(){calculateTotals(); renderHistory(); renderChart();}
+
+// ==== EVENTOS ====
+setBalanceBtn.addEventListener("click",()=>{
+    const v=parseFloat(initialBalanceInput.value);
+    if(isNaN(v)||v<0){alert("Balance inválido"); return;}
+    initialBalance=v; saveLocal(); renderAll();
+});
+
+tradeForm.addEventListener("submit",e=>{
+    e.preventDefault();
+    const type=document.getElementById("type").value;
+    const pair=document.getElementById("pair").value.trim();
+    const lot=parseFloat(document.getElementById("lot").value);
+    const profit=parseFloat(document.getElementById("profit").value)||0;
+    const loss=parseFloat(document.getElementById("loss").value)||0;
+    const date=document.getElementById("date").value.trim();
+    const comment=document.getElementById("comment").value;
+    if(!type||!pair||isNaN(lot)||lot<=0||!date){alert("Completa los campos correctamente."); return;}
+    const idx=editingIndexInput.value;
+    if(idx===""){trades.push({type,pair,lot,profit,loss,date,comment});}
+    else{trades[parseInt(idx)]={type,pair,lot,profit,loss,date,comment}; editingIndexInput.value="";}
+    saveLocal(); renderAll(); tradeForm.reset();
+});
+
+window.startEdit=function(i){
+    const t=trades[i];
+    document.getElementById("type").value=t.type;
+    document.getElementById("pair").value=t.pair;
+    document.getElementById("lot").value=t.lot;
+    document.getElementById("profit").value=t.profit;
+    document.getElementById("loss").value=t.loss;
+    document.getElementById("date").value=t.date;
+    document.getElementById("comment").value=t.comment;
+    editingIndexInput.value=i;
+};
+
+window.deleteTrade=function(i){
+    if(confirm("Eliminar operación?")){
+        trades.splice(i,1);
+        saveLocal();
+        renderAll();
+    }
+};
+
+// ===== SIDEBAR TABS ====
+const tabs=document.querySelectorAll("#sidebar button[data-tab]");
+tabs.forEach(btn=>btn.addEventListener("click",()=>{
+    tabs.forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    const tab=btn.dataset.tab;
+    document.querySelectorAll(".tabContent").forEach(tc=>tc.style.display="none");
+    document.getElementById(tab).style.display="block";
+}));
+
+const themeToggle=document.getElementById("themeToggle");
+let theme=localStorage.getItem("theme")||"dark";
+function applyTheme(){if(theme==="light"){document.body.classList.add("light");themeToggle.textContent="Modo Noche 🌙";}else{document.body.classList.remove("light");themeToggle.textContent="Modo Día ☀️";}}
+themeToggle.addEventListener("click",()=>{theme=theme==="dark"?"light":"dark";localStorage.setItem("theme",theme);applyTheme();});
+
+(function init(){applyTheme();renderAll();})();
+
+(function init(){applyTheme();renderAll();})();
+
+// ================================
+// BOTÓN: EXPORTAR JSON
+// ================================
+document.getElementById("exportTrades").addEventListener("click", () => {
+    const data = {
+        initialBalance,
+        trades
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "trading_data.json";
+    a.click();
+    URL.revokeObjectURL(url);
+});
+
+// ================================
+// BOTÓN: IMPORTAR JSON
+// ================================
+document.getElementById("importTrades").addEventListener("click", () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+
+    input.onchange = e => {
+        const file = e.target.files[0];
+        const reader = new FileReader();
+
+        reader.onload = event => {
+            try {
+                const imported = JSON.parse(event.target.result);
+
+                if (!imported || !Array.isArray(imported.trades)) {
+                    alert("Archivo inválido.");
+                    return;
+                }
+
+                initialBalance = imported.initialBalance || 0;
+                trades = imported.trades;
+
+                saveLocal();
+                renderAll();
+                alert("Datos importados correctamente.");
+            } catch (err) {
+                alert("Error al leer el archivo.");
+            }
+        };
+
+        reader.readAsText(file);
+    };
+
+    input.click();
+});
+
+// ================================
+// MODAL: MOSTRAR / OCULTAR REGLAS
+// ================================
+document.getElementById("showRules").addEventListener("click", () => {
+    document.getElementById("rulesModal").style.display = "block";
+});
+
+document.getElementById("closeRules").addEventListener("click", () => {
+    document.getElementById("rulesModal").style.display = "none";
+});
+</script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+</script>
+</body>
+</html>
+
